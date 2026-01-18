@@ -15,6 +15,10 @@ client.once('ready', () => {
 });
 
 client.on('messageCreate', async (message) => {
+    console.log(`Pesan diterima: ${message.content} dari ${message.author.tag}`);
+    if (message.webhookId) {
+        console.log('WEBHOOK ID TERDETEKSI:', message.webhookId);
+    }
     if (message.author.bot) return;
 
     // STEP 1: Inisiasi Perintah
@@ -36,7 +40,7 @@ client.on('messageCreate', async (message) => {
         if (!channelId || channelId !== message.channel.id) return;
 
         pending.delete(message.author.id);
-        
+
         const statusMsg = await message.channel.send('⏳ Memindai dan menghapus semua pesan webhook...');
         let totalDeleted = 0;
         let lastMessageId = message.id;
@@ -48,8 +52,8 @@ client.on('messageCreate', async (message) => {
                 if (msgs.size === 0) break;
 
                 // FILTER: Ambil pesan yang dikirim oleh Webhook APAPUN & < 14 hari
-                const targets = msgs.filter(m => 
-                    m.webhookId !== null && 
+                const targets = msgs.filter(m =>
+                    m.webhookId !== null &&
                     (Date.now() - m.createdTimestamp) < 1209600000
                 );
 
