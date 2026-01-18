@@ -1,10 +1,4 @@
-const {
-    Client,
-    GatewayIntentBits,
-    PermissionsBitField
-} = require('discord.js');
-
-const TARGET_WEBHOOK_ID = '1462284662213836997';
+const { Client, GatewayIntentBits, PermissionsBitField } = require('discord.js');
 
 const client = new Client({
     intents: [
@@ -17,53 +11,68 @@ const client = new Client({
 const pending = new Map();
 
 client.once('ready', () => {
-    console.log(`Login sebagai ${client.user.tag}`);
+    console.log(`✅ Bot Aktif sebagai ${client.user.tag}`);
 });
 
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
 
-    // STEP 1
+    // STEP 1: Inisiasi Perintah
     if (message.content === '!cleanwebhook') {
         if (!message.member.permissions.has(PermissionsBitField.Flags.ManageMessages)) {
-            return message.reply('❌ Tidak punya izin');
+            return message.reply('❌ Kamu butuh izin `Manage Messages` untuk ini.');
         }
 
         pending.set(message.author.id, message.channel.id);
         return message.reply(
-            '⚠️ Ini akan menghapus **SEMUA pesan dari webhook Spidey Bot (<14 hari)** di channel ini.\n' +
+            '⚠️ **PERINGATAN**: Ini akan menghapus **SEMUA** pesan dari **SEMUA WEBHOOK** (Spidey Bot, GitHub, IFTTT, dll) dalam 14 hari terakhir.\n' +
             'Ketik `!confirm` untuk lanjut.'
         );
     }
 
-    // STEP 2
+    // STEP 2: Konfirmasi dan Eksekusi
     if (message.content === '!confirm') {
         const channelId = pending.get(message.author.id);
-        if (channelId !== message.channel.id) return;
+        if (!channelId || channelId !== message.channel.id) return;
 
         pending.delete(message.author.id);
-        await message.delete();
+        
+        const statusMsg = await message.channel.send('⏳ Memindai dan menghapus semua pesan webhook...');
+        let totalDeleted = 0;
+        let lastMessageId = message.id;
 
-        let total = 0;
+        try {
+            while (true) {
+                // Ambil 100 pesan sebelumnya
+                const msgs = await message.channel.messages.fetch({ limit: 100, before: lastMessageId });
+                if (msgs.size === 0) break;
 
-        while (true) {
-            const msgs = await message.channel.messages.fetch({ limit: 100 });
-            if (msgs.size === 0) break;
+                // FILTER: Ambil pesan yang dikirim oleh Webhook APAPUN & < 14 hari
+                const targets = msgs.filter(m => 
+                    m.webhookId !== null && 
+                    (Date.now() - m.createdTimestamp) < 1209600000
+                );
 
-            const targets = msgs.filter(m =>
-                m.webhookId === TARGET_WEBHOOK_ID &&
-                Date.now() - m.createdTimestamp < 14 * 24 * 60 * 60 * 1000
-            );
+                if (targets.size > 0) {
+                    const deleted = await message.channel.bulkDelete(targets, true);
+                    totalDeleted += deleted.size;
+                }
 
-            if (targets.size === 0) break;
+                // Update pointer ID untuk loop berikutnya
+                lastMessageId = msgs.last().id;
 
-            await message.channel.bulkDelete(targets, true);
-            total += targets.size;
+                // Jika pesan tertua dalam fetch sudah > 14 hari, hentikan pencarian
+                const oldestMsg = msgs.last();
+                if ((Date.now() - oldestMsg.createdTimestamp) > 1209600000) {
+                    break;
+                }
+            }
+
+            await statusMsg.edit(`✅ Berhasil menghapus total **${totalDeleted}** pesan dari semua webhook.`);
+        } catch (error) {
+            console.error(error);
+            await statusMsg.edit('❌ Gagal menghapus pesan. Pastikan bot memiliki izin `Manage Messages`.');
         }
-
-        return message.channel.send(
-            `✅ Selesai. ${total} pesan webhook Spidey Bot terhapus.`
-        );
     }
 });
 
